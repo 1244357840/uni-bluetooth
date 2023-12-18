@@ -1,7 +1,9 @@
+```
 this.ble = BLEUtils.BLE({
 	deviceId: this.deviceId,
-	notifyCallback: () => {},
+	onNotify: () => {},
 	onClose: () => {}
 })
 
 this.ble.writeValue(value)
+```
