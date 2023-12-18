@@ -667,6 +667,37 @@ export default class BluetoothUtil {
 			}
 		})
 	}
+	
+	/**
+	 * 根据 uuid 获取处于已连接状态的设备。
+	 * @param {Array<String>} services
+	 * @param {String} mathId
+	 * @return {Promise}
+	 */
+	static getConnectedBluetoothDevices(services, mathId) {
+		return new Promise((resolve, reject) => {
+			uni.getConnectedBluetoothDevices({
+				services: services,
+				success(res) {
+					console.log("【getConnectedBluetoothDevices】", res);
+					if (mathId.length) {
+						for (let i = 0; i < res.devices.length; i++) {
+							if (this.matchDeviceId(res.devices[i].deviceId) == mathId) {
+								return resolve(true)
+							}
+						}
+						resolve(false)
+					} else {
+						resolve(res)
+					}
+				},
+				fail(err) {
+					console.log("【getConnectedBluetoothDevices err】", err);
+					reject(err)
+				}
+			})
+		})
+	}
 
 	/**
 	 * 连接设备流程
@@ -685,6 +716,10 @@ export default class BluetoothUtil {
 				await this.dealOpenAdapter()
 				console.log('【connectedDevice】', this.connectedDevice);
 				let handleDevice = this.connectedDevice[option.deviceId]
+				let isConnect = false; // 是否已经连接
+				if (handleDevice) {
+					isConnect = await this.getConnectedBluetoothDevices([handleDevice.writeServicesId], option.deviceId)
+				}
 				if (!handleDevice) {
 					let scanDevice = []
 					if (!option.reloadScan) {
@@ -708,9 +743,11 @@ export default class BluetoothUtil {
 					})
 				}
 				console.log('【handleDevice】', handleDevice);
-				await this.createConnect({
-					deviceId: handleDevice.device.deviceId
-				}) // 连接设备
+				if (!isConnect) {
+					await this.createConnect({
+						deviceId: handleDevice.device.deviceId
+					}) // 连接设备
+				}
 				// 获取写入的特征
 				if (!handleDevice.services || !handleDevice.writeCharacteristicsId || !handleDevice.writeServicesId) {
 					// 获取设备服务
