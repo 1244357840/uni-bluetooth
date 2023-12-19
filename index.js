@@ -10,7 +10,7 @@ export default class BluetoothUtil {
 	static maxScanTime = 10000; // 最长扫描时间
 
 	static alreadyStateChange = false;
-	
+
 	static connectSucCode = [-1, 10010] // 连接成功的状态码
 
 	static errorMsg = {
@@ -39,16 +39,16 @@ export default class BluetoothUtil {
 	 * @param {Boolean} device.reloadScan 是否重新扫描设备，不从getBluetoothDevices获取设备
 	 * @param {Function} device.onNotify: 监听消息
 	 * @param {Function} device.onClose: 监听蓝牙断开
-	 * @return {{writeValue, close}}
+	 * @return {{writeValue: Function, close: Function, connected: Function}}
 	 */
 	static BLE(device) {
 		const that = this
 		return {
-			writeValue: (value, toBuffer) => {
+			writeValue: (value, valueType) => {
 				return that.writeValue({
 					...device,
 					value,
-					toBuffer,
+					valueType,
 				})
 			},
 			close: () => {
@@ -155,9 +155,8 @@ export default class BluetoothUtil {
 		}, scanTime)
 	}
 	/**
-	 * 扫描已经超时了
-	 * @description 扫描设备开启超时定时器
-	 * @param {Number} scanTime 默认10000ms 最长扫描时间，超过未扫描到则失败. 0: 关闭定时器
+	 * 停止扫描设备
+	 * @description 停止扫描设备
 	 * @return {Promise}
 	 */
 	static stopScan() {
@@ -637,7 +636,9 @@ export default class BluetoothUtil {
 			}
 		})
 	}
-
+	/**
+	 * @typedef {('string' | 'buffer' | 'hex')} ValueType - 写入的数据类型
+	 */
 	/**
 	 * 连接设备流程 - 写入流程
 	 * @param {Object} option
@@ -645,14 +646,16 @@ export default class BluetoothUtil {
 	 * @param {Array} option.services 匹配的设备服务
 	 * @param {ArrayBuffer} option.value 写入的数据
 	 * @param {Boolean} option.reloadScan 是否重新扫描设备，不从getBluetoothDevices获取设备
-	 * @param {Boolean} option.toBuffer 需要转换成buffer, 如果option.value不是buffer的话需要传true
+	 * @param {ValueType} option.valueType 写入的数据类型,如果不是buffer，就自动转换为buffer
 	 * @return {Promise}
 	 */
 	static writeValue(option) {
 		return new Promise(async (resolve, reject) => {
 			try {
 				let value = option.value
-				if (option.toBuffer) {
+				if (option.valueType === 'hex') {
+					value = this.hex2buf(value)
+				} else if (option.valueType === 'string') {
 					value = this.str2buf(value)
 				}
 				await this.toConnectDevice(option)
@@ -667,7 +670,7 @@ export default class BluetoothUtil {
 			}
 		})
 	}
-	
+
 	/**
 	 * 根据 uuid 获取处于已连接状态的设备。
 	 * @param {Array<String>} services
@@ -809,14 +812,26 @@ export default class BluetoothUtil {
 	}
 
 	/**
-	 * 处理buffer数据 string是16进制的
+	 * 处理buffer数据 value是16进制
 	 * @param {String} value
 	 */
-	static str2buf(value) {
+	static hex2buf(value) {
 		const bytes = [];
 		for (let i = 0; i < hexString.length; i += 2) {
 			bytes.push(parseInt(hexString.substr(i, 2), 16));
 		}
 		return new Uint8Array(bytes).buffer;
+	}
+
+	/**
+	 * 处理buffer数据
+	 * @param {String} value
+	 */
+	static str2buf(string) {
+		const array = new Uint8Array(string.length);
+		for (let i = 0; i < string.length; i++) {
+			array[i] = string.charCodeAt(i);
+		}
+		return array.buffer;
 	}
 }
