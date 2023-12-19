@@ -815,7 +815,7 @@ export default class BluetoothUtil {
 	 * 处理buffer数据 value是16进制
 	 * @param {String} value
 	 */
-	static hex2buf(value) {
+	static hex2buf(hexString) {
 		const bytes = [];
 		for (let i = 0; i < hexString.length; i += 2) {
 			bytes.push(parseInt(hexString.substr(i, 2), 16));
