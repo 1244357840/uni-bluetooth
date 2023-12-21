@@ -7,16 +7,28 @@ github: [ uni-bluetooth ](https://github.com/1244357840/uni-bluetooth)
 npm: [ uni-bluetooth ](https://www.npmjs.com/package/uni-bluetooth)
 
 
-使用代码：
+### 使用代码：
 ```
 // 创建实例
 const ble = UniBluetooth.BLE({
-	deviceId: 要连接的设备localName或mac地址,
-	onNotify: () => {},
-	onClose: () => {}
+    deviceId: 要连接的设备localName或mac地址,
+    onNotify: () => {},
+    onClose: () => {}
 })
 // 写入数据
 ble.writeValue(value)
+```
+
+### 案例
+```
+// 向设备写入16进制的字符串 '010041240100640000000000006a46'
+
+const value = '010041240100640000000000006a46'
+const ble = UniBluetooth.BLE({
+    deviceId: 设备ID,
+})
+ble.writeValue(value, 'hex') // 'hex'表示value的值是16进制的，另外还有'string' 和 'buffer' 两种类型
+
 ```
 ### UniBluetooth.BLE()
 
@@ -43,8 +55,6 @@ ble.writeValue(value)
 | --- | --- | --- | --- | --- |
 |  value  | string\|buffer | | 是 | 写入蓝牙设备的数据 |
 |  valueType  | string | 'buffer' | 否 | hex \| string \| buffer  value如果不是buffer，则自动转换为buffer |
-
-
 
 ### 连接流程解析：
 
