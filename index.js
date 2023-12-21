@@ -167,14 +167,17 @@ export default class BluetoothUtil {
 	/**
 	 * 消息监听
 	 * @description 消息监听
+	 * @param {Number} delay 延时返回成功（安卓平台上，在调用 notifyBLECharacteristicValueChange 成功后立即调用 writeBLECharacteristicValue 接口，在部分机型上会发生 10008 系统错误）
 	 * @return {Promise}
 	 */
-	static notifyBLECharacteristicValueChange(option) {
+	static notifyBLECharacteristicValueChange(option, delay = 100) {
 		return new Promise((resolve, reject) => {
 			uni.notifyBLECharacteristicValueChange({
 				...option,
 				success(res) {
-					resolve(res)
+					setTimeout(() => {
+						resolve(res)
+					}, delay)
 				},
 				fail(err) {
 					reject(err)
@@ -679,13 +682,14 @@ export default class BluetoothUtil {
 	 */
 	static getConnectedBluetoothDevices(services, mathId) {
 		return new Promise((resolve, reject) => {
+			const that = this
 			uni.getConnectedBluetoothDevices({
 				services: services,
 				success(res) {
 					console.log("【getConnectedBluetoothDevices】", res);
 					if (mathId.length) {
 						for (let i = 0; i < res.devices.length; i++) {
-							if (this.matchDeviceId(res.devices[i].deviceId) == mathId) {
+							if (that.matchDeviceId(res.devices[i].deviceId) == mathId) {
 								return resolve(true)
 							}
 						}
@@ -783,7 +787,7 @@ export default class BluetoothUtil {
 					console.log('【matchNotify】', matchNotify);
 					this.connectedDevice[option.deviceId].onNotify = option.onNotify
 					try {
-						this.notifyBLECharacteristicValueChange({
+						await this.notifyBLECharacteristicValueChange({
 							deviceId: handleDevice.device.deviceId,
 							serviceId: matchNotify.services,
 							characteristicId: matchNotify.characteristics,
