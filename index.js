@@ -167,17 +167,14 @@ export default class BluetoothUtil {
 	/**
 	 * 消息监听
 	 * @description 消息监听
-	 * @param {Number} delay 延时返回成功（安卓平台上，在调用 notifyBLECharacteristicValueChange 成功后立即调用 writeBLECharacteristicValue 接口，在部分机型上会发生 10008 系统错误）
 	 * @return {Promise}
 	 */
-	static notifyBLECharacteristicValueChange(option, delay = 100) {
+	static notifyBLECharacteristicValueChange(option) {
 		return new Promise((resolve, reject) => {
 			uni.notifyBLECharacteristicValueChange({
 				...option,
 				success(res) {
-					setTimeout(() => {
-						resolve(res)
-					}, delay)
+					resolve(res)
 				},
 				fail(err) {
 					reject(err)
@@ -548,8 +545,8 @@ export default class BluetoothUtil {
 					deviceId: option.deviceId,
 					reloadScan: true
 				})
-				const device = this.connectedDevice[deviceKey]
-				if (device) {
+				const device = this.connectedDevice[option.deviceId]
+				if (!device) {
 					reject({
 						msg: '重新连接设备失败'
 					})
@@ -557,6 +554,7 @@ export default class BluetoothUtil {
 					resolve(device)
 				}
 			} catch (err) {
+				console.log(err);
 				reject(err)
 			}
 		})
@@ -590,7 +588,7 @@ export default class BluetoothUtil {
 						try {
 							const deviceKey = that.matchDeviceId(option.deviceId)
 							console.log('【开始重新扫描】', deviceKey)
-							const device = that.reconnectDevice({
+							const device = await that.reconnectDevice({
 								deviceId: deviceKey
 							})
 							const e = await that.writeBLE({
@@ -787,7 +785,7 @@ export default class BluetoothUtil {
 					console.log('【matchNotify】', matchNotify);
 					this.connectedDevice[option.deviceId].onNotify = option.onNotify
 					try {
-						await this.notifyBLECharacteristicValueChange({
+						this.notifyBLECharacteristicValueChange({
 							deviceId: handleDevice.device.deviceId,
 							serviceId: matchNotify.services,
 							characteristicId: matchNotify.characteristics,
