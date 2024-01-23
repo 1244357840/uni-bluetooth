@@ -6,8 +6,11 @@ github: [ uni-bluetooth ](https://github.com/1244357840/uni-bluetooth)
 
 npm: [ uni-bluetooth ](https://www.npmjs.com/package/uni-bluetooth)
 
+uni插件市场: [y-bluetooth](https://ext.dcloud.net.cn/plugin?id=16447)
 
-### 使用代码：
+# ------- 2024-01-23 更新分片写入方法(请查看下方) -------
+
+### 基础使用代码：
 ```
 // 创建实例
 const ble = UniBluetooth.BLE({
@@ -18,6 +21,7 @@ const ble = UniBluetooth.BLE({
 // 写入数据
 ble.writeValue(value)
 ```
+有BUG可以直接评论区提出
 
 ### 案例
 ```
@@ -29,6 +33,46 @@ const ble = UniBluetooth.BLE({
 })
 ble.writeValue(value, 'hex') // 'hex'表示value的值是16进制的，另外还有'string' 和 'buffer' 两种类型
 
+```
+
+# ------- 2024-01-23 更新分片写入 -------
+### 蓝牙数据超过20字节的写入方法（分片写入）
+#### 官网说明：
+*1、并行调用多次会存在写失败的可能性。
+2、APP不会对写入数据包大小做限制，但系统与蓝牙设备会限制蓝牙4.0单次传输的数据大小，超过最大字节数后会发生写入错误，建议每次写入不超过20字节。
+3、若单次写入数据过长，iOS 上存在系统不会有任何回调的情况（包括错误回调）。*
+#### 解决方案：
+#### 使用代码：
+```
+// 向设备写入16进制的字符串 '010041240100640000000000006a46010041240100640000000000006a46'
+
+const value = '010041240100640000000000006a46'
+const ble = UniBluetooth.BLE({
+    deviceId: 设备ID,
+})
+// 第三个参数为true时会自动分片写入蓝牙数据
+ble.writeValue(value, 'hex', true) // 'hex'表示value的值是16进制的，另外还有'string' 和 'buffer' 两种类型
+```
+
+### 排队写入
+在分片写入之后，如果第二次写入太快的话，设备可能无法识别是否为同一次写入
+```
+// 向设备写入16进制的字符串 '010041240100640000000000006a46010041240100640000000000006a46'
+
+const value = '010041240100640000000000006a46'
+const ble = UniBluetooth.BLE({
+    deviceId: 设备ID,
+})
+// 事件1
+ble.eventListWriteValue({
+	value,
+	endDelay: 2000, // 2000ms后执行下一个eventListWriteValue
+	loop: true
+})
+// 下面的方法会在事件1执行完毕后两秒执行
+ble.eventListWriteValue({
+	value,
+})
 ```
 ### UniBluetooth.BLE()
 
@@ -55,6 +99,17 @@ ble.writeValue(value, 'hex') // 'hex'表示value的值是16进制的，另外还
 | --- | --- | --- | --- | --- |
 |  value  | string\|buffer | | 是 | 写入蓝牙设备的数据 |
 |  valueType  | string | 'buffer' | 否 | hex \| string \| buffer  value如果不是buffer，则自动转换为buffer |
+|  loop  | boolean | false | 否 | 是否循环写入，当字节超过20的时候需要开启 |
+
+### UniBluetooth.eventListWriteValue(Object) 分片写入蓝牙数据
+
+| 属性 | 类型 | 默认值 | 必填 | 说明 |
+| --- | --- | --- | --- | --- |
+|  value  | string\|buffer | | 是 | 写入蓝牙设备的数据 |
+|  valueType  | string | 'buffer' | 否 | hex \| string \| buffer  value如果不是buffer，则自动转换为buffer |
+|  loop  | boolean | false | 否 | 是否循环写入，当字节超过20的时候需要开启 |
+|  startDelay  | number | 0 | 否 | 执行函数前先sleep多少ms |
+|  endDelay  | number | 100 | 否 | 执行完函数后sleep多少ms返回结束状态 |
 
 ### 连接流程解析：
 
