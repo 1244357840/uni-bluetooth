@@ -6,6 +6,7 @@ import {
  * @description
  */
 export default class BluetoothUtil {
+	static useLog = false
 
 	static scanTimer = 0; // 扫描设备定时器
 
@@ -18,6 +19,12 @@ export default class BluetoothUtil {
 	static connectSucCode = [-1, 10010] // 连接成功的状态码
 
 	static errorMsg = {
+		'-99': '请打开蓝牙或GPS定位',
+		'-98': '设备ID错误',
+		'-97': '扫描设备超时',
+		'-96': '未找到设备',
+		'-95': '未匹配到设备服务',
+		'-94': '未匹配到服务特征',
 		'0': 'ok',
 		'10000': '未初始化蓝牙适配器',
 		'10001': '当前蓝牙适配器不可用',
@@ -34,17 +41,80 @@ export default class BluetoothUtil {
 		'10012': '连接超时',
 		'10013': '连接 deviceId 为空或者是格式不正确',
 	}
+
+	static canShowErr = false
+
+	static errModal = 'modal' // 'message' | modal
+
+	/**
+	 * loading配置
+	 * @param {String} title 显示的文本
+	 * @param {Boolean} show 是否自动显示
+	 */
+	static loadingConfig = {
+		show: false,
+		title: '连接蓝牙设备中...',
+		mask: true
+	}
+
+	/**
+	 * 匹配服务特征配置 默认自动读取符合特征的UUID
+	 * @param {String | RegExp | Function} services 服务UUID
+	 * @param {String | RegExp | Function} characteristics 特征UUID
+	 */
+	static servicesConfig = {
+		services: '',
+		characteristics: '',
+	}
+
+	static logInfo(...arg) {
+		if (this.useLog) {
+			console.log(...arg)
+		}
+	}
+
+	static showErrModal(err, errModal = 'modal') {
+		const code = err?.errCode || ''
+		uni[this.errModal == 'modal' ? 'showModal' : 'showToast']({
+			title: this.errorMsg[code] || err?.errMsg || err.message,
+			icon: 'none'
+		})
+	}
+
+	static _toShowErrModal(err) {
+		if (this.canShowErr && err?.errCode != 0) {
+			this.showErrModal(err, this.errModal)
+		}
+	}
+
+	static autoShowLoading(open = true) {
+		if (this.loadingConfig.show) {
+			open ? uni.showLoading({
+				title: this.loadingConfig.title,
+				mask: this.loadingConfig.mask
+			}) : uni.hideLoading()
+		}
+	}
+
 	/**
 	 * @typedef {('string' | 'buffer' | 'hex')} ValueType - 写入的数据类型
 	 */
+
 	/**
-	 * 连接设备流程
-	 * @param {Object} device 连接的设备
-	 * @param {String} device.deviceId 设备ID或MAC
-	 * @param {Array} device.services 设备服务
-	 * @param {Boolean} device.reloadScan 是否重新扫描设备，不从getBluetoothDevices获取设备
-	 * @param {Function} device.onNotify: 监听消息
-	 * @param {Function} device.onClose: 监听蓝牙断开
+	 * @typedef {Object} DeviceOption - 设备选项
+	 * @property {String} deviceId 设备ID或MAC
+	 * @property {Function | RegExp | String} matchServices 匹配服务uuid,不传就匹配所有
+	 * @property {Function | RegExp | String} matchWriteUUID 匹配写入蓝牙的特征UUID
+	 * @property {Function | RegExp | String} matchNotifyUUID 匹配读取蓝牙的特征UUID
+	 * @property {ArrayBuffer} value 写入的数据
+	 * @property {Boolean} reloadScan 是否重新扫描设备，不从getBluetoothDevices获取设备
+	 * @property {Function} onNotify: 监听消息
+	 * @property {Function} onClose: 监听蓝牙断开
+	 */
+
+	/**
+	 * 主操作函数
+	 * @param {DeviceOption} device 连接的设备
 	 * @return {{writeValue: Function, close: Function, connected: Function}}
 	 */
 	static BLE(device) {
@@ -70,13 +140,18 @@ export default class BluetoothUtil {
 			eventListWriteValue: (option) => {
 				return new Promise((resolve, reject) => {
 					basicEventList.push({
-						fn: () => {
-							that.writeValue({
-								...device,
-								value: option.value,
-								valueType: option.valueType,
-								loop: option.loop
-							})
+						fn: async () => {
+							try {
+								await that.writeValue({
+									...device,
+									value: option.value,
+									valueType: option.valueType,
+									loop: option.loop
+								})
+								resolve("【循环写入完毕】")
+							} catch (err) {
+								reject(err)
+							}
 						},
 						startDelay: option.startDelay,
 						endDelay: option.endDelay === undefined ? 100 : option.endDelay, // 默认100ms后执行下一个任务
@@ -96,24 +171,24 @@ export default class BluetoothUtil {
 	static init() {
 		if (!this.alreadyStateChange) {
 			uni.onBluetoothAdapterStateChange((res) => {
-				console.log('【onBluetoothAdapterStateChange】', res);
+				BluetoothUtil.logInfo('【onBluetoothAdapterStateChange】', res);
 				if (!res.available) {
 					this.connectedDevice = []
 				}
 			})
 			uni.onBLEConnectionStateChange((res) => {
-				console.log('【onBLEConnectionStateChange】', res);
+				BluetoothUtil.logInfo('【onBLEConnectionStateChange】', res);
 				if (!res.connected && res.deviceId) {
 					const key = this.matchDeviceId(res.deviceId)
 					if (key) {
 						this.connectedDevice[key]?.onClose && this.connectedDevice[key].onClose()
 						this.connectedDevice[key] = null
-						console.log('【断开设备】', key);
+						BluetoothUtil.logInfo('【断开设备】', key);
 					}
 				}
 			})
 			uni.onBLECharacteristicValueChange((res) => {
-				console.log('【onBLECharacteristicValueChange】', res);
+				BluetoothUtil.logInfo('【onBLECharacteristicValueChange】', res);
 				if (res.deviceId) {
 					let key = this.matchDeviceId(res.deviceId)
 					if (key && this.connectedDevice[key].onNotify) {
@@ -153,19 +228,41 @@ export default class BluetoothUtil {
 
 	}
 
+	static closeBluetoothAdapter() {
+		return new Promise((resolve, reject) => {
+			uni.closeBluetoothAdapter({
+				success() {
+					this.connectedDevice = []
+					BluetoothUtil.logInfo("【closeBluetoothAdapter success】");
+					resolve()
+				},
+				fail(err) {
+					console.error("【closeBluetoothAdapter error】", err);
+					reject()
+				}
+			})
+		})
+	}
 	/**
 	 * 初始化蓝牙设备
 	 */
 	static dealOpenAdapter() {
 		return new Promise((resolve, reject) => {
+			const that = this
 			uni.openBluetoothAdapter({
 				success(res) {
-					console.log("【初始化蓝牙】", JSON.stringify(res));
+					BluetoothUtil.logInfo("【初始化蓝牙】", JSON.stringify(res));
 					resolve(res)
 				},
 				fail(err) {
-					console.log("【初始化蓝牙Error】", JSON.stringify(err));
-					reject(err)
+					BluetoothUtil.logInfo("【初始化蓝牙Error】", JSON.stringify(err));
+					that._toShowErrModal({
+						errCode: '-99'
+					})
+					reject({
+						errCode: '-99',
+						errMsg: err?.errMsg
+					})
 				}
 			})
 		})
@@ -227,11 +324,11 @@ export default class BluetoothUtil {
 		return new Promise((resolve, reject) => {
 			if (typeof deviceId != 'string' && typeof deviceId != 'object') {
 				return reject({
-					type: 'error',
-					msg: '设备ID错误'
+					errCode: '-98',
+					errMsg: this.errorMsg['-98']
 				})
 			}
-			console.log("【需要连接的ID】", deviceId);
+			BluetoothUtil.logInfo("【需要连接的ID】", deviceId);
 			const deviceArr = typeof deviceId == 'string' ? [deviceId] : [...deviceId]
 			const scanDevice = [] // 扫描出来的设备
 			this.setScanTimer(() => {
@@ -239,13 +336,13 @@ export default class BluetoothUtil {
 					resolve(scanDevice)
 				} else {
 					reject({
-						type: 'timeout',
-						msg: '扫描设备超时'
+						errCode: '-97',
+						errMsg: this.errorMsg['-97']
 					})
 				}
 			}, this.maxScanTime)
 			uni.onBluetoothDeviceFound((res) => {
-				console.log("【扫描到设备】", res, res.devices[0]?.localName);
+				BluetoothUtil.logInfo("【扫描到设备】", res, res.devices[0]?.localName);
 				if (res.devices[0]) {
 					for (let i = 0; i < deviceArr.length; i++) {
 						const id = deviceArr[i]
@@ -264,12 +361,12 @@ export default class BluetoothUtil {
 			})
 
 			uni.startBluetoothDevicesDiscovery({
-				// allowDuplicatesKey: true,
+				allowDuplicatesKey: true,
 				success(res) {
-					console.log("【开启蓝牙搜索】", JSON.stringify(res));
+					BluetoothUtil.logInfo("【开启蓝牙搜索】", JSON.stringify(res));
 				},
 				fail() {
-					console.log("【开启蓝牙搜索Error】", JSON.stringify(res));
+					BluetoothUtil.logInfo("【开启蓝牙搜索Error】", JSON.stringify(res));
 				}
 			})
 		})
@@ -316,7 +413,7 @@ export default class BluetoothUtil {
 			const arrayMac = arrayBuff.toUpperCase();
 			return arrayMac
 		} catch (err) {
-			console.log('【解析Mac地址错误】', err);
+			BluetoothUtil.logInfo('【解析Mac地址错误】', err);
 			return ''
 		}
 	}
@@ -332,7 +429,7 @@ export default class BluetoothUtil {
 			uni.getBluetoothDevices({
 				success(res) {
 					if (!deviceId) return resolve(res.devices)
-					console.log("【getBluetoothDevices】", res.devices);
+					BluetoothUtil.logInfo("【getBluetoothDevices】", res.devices);
 					for (let i = 0; i < res.devices.length; i++) {
 						if (_that.matchDevice(res.devices[i], deviceId)) {
 							return resolve(res.devices[i])
@@ -355,17 +452,17 @@ export default class BluetoothUtil {
 	 * @return {Promise}
 	 */
 	static async createConnect(device) {
-		console.log('【createConnect device】', device);
+		BluetoothUtil.logInfo('【createConnect device】', device);
 		return new Promise((resolve, reject) => {
 			uni.createBLEConnection({
 				deviceId: device.deviceId,
 				timeout: 10000,
 				success(res) {
-					console.log('【创建连接】', res);
+					BluetoothUtil.logInfo('【创建连接】', res);
 					resolve(res)
 				},
 				fail(err) {
-					console.log('【创建连接Error】', err);
+					BluetoothUtil.logInfo('【创建连接Error】', err);
 					if (this.connectSucCode.includes(err.errCode)) {
 						// 已经连接
 						resolve()
@@ -389,11 +486,11 @@ export default class BluetoothUtil {
 			uni.closeBLEConnection({
 				deviceId,
 				success(res) {
-					console.log('【断开连接】', res);
+					BluetoothUtil.logInfo('【断开连接】', res);
 					resolve(res)
 				},
 				fail(err) {
-					console.log('【断开连接Error】', err);
+					BluetoothUtil.logInfo('【断开连接Error】', err);
 					reject(err)
 				}
 			})
@@ -417,15 +514,30 @@ export default class BluetoothUtil {
 					this.connectedDevice[device.deviceId] = null
 					resolve(res)
 				} else {
-					reject({
-						msg: 'device_error',
-						msg: '未获取到设备'
-					})
+					// reject({
+					// 	msg: 'device_error',
+					// 	msg: '未获取到设备'
+					// })
 				}
 			} catch (err) {
 				reject(err)
 			}
 		})
+	}
+	/**
+	 * @description 匹配字符
+	 */
+	static matchStr(str, matchFn) {
+		if (!matchFn) return true
+		if (typeof matchFn === 'function') {
+			return matchFn(str)
+		} else if (matchFn instanceof RegExp) {
+			return matchFn.test(str)
+		} else if (typeof matchFn === 'string') {
+			return matchFn == str
+		}
+		console.error("【匹配类型错误】")
+		return false
 	}
 
 	/**
@@ -433,30 +545,25 @@ export default class BluetoothUtil {
 	 * @description 获取蓝牙设备所有服务
 	 * @param {Object} option
 	 * @param {String} option.deviceId 连接的设备
-	 * @param {Function | RegExp} option.matchFn 匹配uuid,不传就匹配所有
+	 * @param {Function | RegExp | String} option.matchFn 匹配uuid,不传就匹配所有
 	 * @param {Boolean} option.getCharacteristics 是否获取特征
 	 * @return {Promise<{services: []}>}
 	 */
 	static async getBLEDeviceServices(option) {
-		let matchUUID = (uuid) => {
-			if (!option.matchFn) return true
-			if (typeof option.matchFn === 'function') {
-				return option.matchFn(uuid)
-			} else if (typeof option.matchFn === 'string') {
-				return option.matchFn == uuid || new RegExp(option.matchFn, 'ig').test(uuid)
-			} else {
-				return option.matchFn.test(uuid)
-			}
-		}
 		const that = this
+		let matchUUID = (uuid) => {
+			const matchFn = option.matchFn || that.servicesConfig
+			return that.matchStr(uuid, matchFn)
+		}
 		return new Promise((resolve, reject) => {
 			uni.getBLEDeviceServices({
 				deviceId: option.deviceId,
 				success: async (res) => {
-					console.log('【getBLEDeviceServices】', res);
+					BluetoothUtil.logInfo('【getBLEDeviceServices】', res);
 					const services = []
 					for (let i = 0; i < res.services.length; i++) {
 						let serviceId = res.services[i].uuid
+						// if (that.servicesConfig.services && that.servicesConfig.)
 						if (matchUUID(serviceId)) {
 							if (option.getCharacteristics) {
 								const characteristics = await that.getBLEDeviceCharacteristics(option.deviceId, serviceId)
@@ -465,10 +572,16 @@ export default class BluetoothUtil {
 							services.push(res.services[i])
 						}
 					}
-					resolve(services)
+					if (services.length) {
+						resolve(services)
+					} else {
+						reject({
+							errCode: '-95'
+						})
+					}
 				},
 				fail(err) {
-					console.log('【getBLEDeviceServicesError】', err);
+					BluetoothUtil.logInfo('【getBLEDeviceServicesError】', err);
 					reject(err)
 				}
 			})
@@ -488,11 +601,11 @@ export default class BluetoothUtil {
 				deviceId,
 				serviceId,
 				success(res) {
-					console.log('【getBLEDeviceCharacteristics】', res);
+					BluetoothUtil.logInfo('【getBLEDeviceCharacteristics】', res);
 					resolve(res)
 				},
 				fail(err) {
-					console.log('【getBLEDeviceCharacteristicsError】', err);
+					BluetoothUtil.logInfo('【getBLEDeviceCharacteristicsError】', err);
 					reject(err)
 				}
 			})
@@ -513,8 +626,8 @@ export default class BluetoothUtil {
 	static matchServicesCharacteristics(option) {
 		if (!option.services?.length || !option.matchType) {
 			throw {
-				type: 'match_error',
-				msg: '匹配特征参数错误'
+				errCode: '-94',
+				errMsg: '未匹配到服务特征'
 			}
 		}
 		for (let i = 0; i < option.services.length; i++) {
@@ -524,6 +637,10 @@ export default class BluetoothUtil {
 				characteristics: res[option.matchType],
 				services: option.services[i].uuid
 			}
+		}
+		throw {
+			errCode: '-94',
+			errMsg: '未匹配到服务特征'
 		}
 	}
 
@@ -535,6 +652,7 @@ export default class BluetoothUtil {
 	 * @return {{write, read, notify, uuid}}
 	 */
 	static matchCharacteristics(characteristics, matchUUID) {
+		const that = this
 		// 匹配出来的UUID
 		let matchRes = {
 			write: '',
@@ -542,10 +660,15 @@ export default class BluetoothUtil {
 			notify: '',
 			uuid: '',
 		}
+		const matchFn = (uuid) => {
+			const matchuuid = matchUUID || that.servicesConfig.characteristics
+			if (!matchuuid) return false
+			return that.matchStr(uuid, matchuuid)
+		}
 		for (let i = 0; i < characteristics.length; i++) {
 			const properties = characteristics[i].properties
 			const uuid = characteristics[i].uuid
-			if (matchUUID && new RegExp(matchUUID, 'ig').test(uuid)) {
+			if (matchFn(uuid)) {
 				matchRes.uuid = uuid
 				return matchRes
 			}
@@ -581,13 +704,14 @@ export default class BluetoothUtil {
 				const device = this.connectedDevice[option.deviceId]
 				if (!device) {
 					reject({
-						msg: '重新连接设备失败'
+						errCode: '-96',
+						errMsg: this.errorMsg['-96']
 					})
 				} else {
 					resolve(device)
 				}
 			} catch (err) {
-				console.log(err);
+				BluetoothUtil.logInfo(err);
 				reject(err)
 			}
 		})
@@ -607,20 +731,20 @@ export default class BluetoothUtil {
 	static writeBLE(option, reload = true) {
 		const that = this
 		return new Promise((resolve, reject) => {
-			console.log('【写入蓝牙数据的参数】', option);
+			BluetoothUtil.logInfo('【写入蓝牙数据的参数】', option);
 			uni.writeBLECharacteristicValue({
 				...option,
 				success: (res) => {
-					console.log('【向蓝牙写入二进制数据成功】', res);
+					BluetoothUtil.logInfo('【向蓝牙写入二进制数据成功】', res);
 					resolve(res)
 				},
 				fail: async (err) => {
-					console.log('【向蓝牙写入二进制数据失败】', err)
+					BluetoothUtil.logInfo('【向蓝牙写入二进制数据失败】', err)
 					if (reload && err?.errCode == 10004) {
 						// *** 10004 需要重新扫描附近设备
 						try {
 							const deviceKey = that.matchDeviceId(option.deviceId)
-							console.log('【开始重新扫描】', deviceKey)
+							BluetoothUtil.logInfo('【开始重新扫描】', deviceKey)
 							const device = await that.reconnectDevice({
 								deviceId: deviceKey
 							})
@@ -655,8 +779,8 @@ export default class BluetoothUtil {
 			try {
 				const device = _that.connectedDevice[option.deviceId]
 				if (!device) reject({
-					type: 'device_undefined',
-					msg: '未获取到设备信息'
+					errCode: '-96',
+					errMsg: _that.errorMsg['-96']
 				})
 				const res = await _that.writeBLE({
 					deviceId: device.device.deviceId,
@@ -684,6 +808,7 @@ export default class BluetoothUtil {
 	static writeValue(option) {
 		return new Promise(async (resolve, reject) => {
 			try {
+				this.autoShowLoading(true)
 				let value = option.value
 				if (option.valueType === 'hex') {
 					value = this.hex2buf(value)
@@ -700,21 +825,23 @@ export default class BluetoothUtil {
 				} else {
 					await this.loopWriteValue(option, value)
 				}
+				this.autoShowLoading(false)
 				resolve('设备已开启')
 			} catch (err) {
+				this.autoShowLoading(false)
 				reject(err)
 			}
 		})
 	}
 
-	// TODO: 未测试过
+	// TODO:
 	static loopWriteValue(option, value) {
 		return new Promise(async (resolve, reject) => {
 			try {
 				const packetSize = 20; // 每个小包的大小为20字节
 				const len = value.byteLength
 				for (let i = 0; i < len; i += packetSize) {
-					console.log(`【循环写入】start = ${i} , end = ${packetSize * (i + 1)}`)
+					BluetoothUtil.logInfo(`【循环写入】start = ${i} , end = ${packetSize * (i + 1)}`)
 					await this.writeDevice({
 						deviceId: option.deviceId,
 						value: value.slice(i, packetSize * (i + 1))
@@ -739,7 +866,7 @@ export default class BluetoothUtil {
 			uni.getConnectedBluetoothDevices({
 				services: services,
 				success(res) {
-					console.log("【getConnectedBluetoothDevices】", res);
+					BluetoothUtil.logInfo("【getConnectedBluetoothDevices】", res);
 					if (mathId.length) {
 						for (let i = 0; i < res.devices.length; i++) {
 							if (that.matchDeviceId(res.devices[i].deviceId) == mathId) {
@@ -752,7 +879,7 @@ export default class BluetoothUtil {
 					}
 				},
 				fail(err) {
-					console.log("【getConnectedBluetoothDevices err】", err);
+					BluetoothUtil.logInfo("【getConnectedBluetoothDevices err】", err);
 					reject(err)
 				}
 			})
@@ -761,31 +888,25 @@ export default class BluetoothUtil {
 
 	/**
 	 * 连接设备流程
-	 * @param {Object} option
-	 * @param {String} option.deviceId 设备ID或MAC
-	 * @param {Array} option.services 匹配的设备服务
-	 * @param {ArrayBuffer} option.value 写入的数据
-	 * @param {Boolean} option.reloadScan 是否重新扫描设备，不从getBluetoothDevices获取设备
-	 * @param {Function} option.onNotify: 监听消息
-	 * @param {Function} option.onClose: 监听蓝牙断开
+	 * @param {DeviceOption} option
 	 * @return {Promise}
 	 */
 	static async toConnectDevice(option) {
 		return new Promise(async (resolve, reject) => {
+			let handleDevice
 			try {
 				await this.dealOpenAdapter()
-				console.log('【connectedDevice】', this.connectedDevice);
-				let handleDevice = this.connectedDevice[option.deviceId]
+				BluetoothUtil.logInfo('【connectedDevice】', this.connectedDevice);
+				handleDevice = this.connectedDevice[option.deviceId]
 				let isConnect = false; // 是否已经连接
-				if (handleDevice) {
-					isConnect = await this.getConnectedBluetoothDevices([handleDevice.writeServicesId], option.deviceId)
-				}
+				isConnect = await this.getConnectedBluetoothDevices(handleDevice ? [handleDevice.writeServicesId] : [],
+					option.deviceId)
 				if (!handleDevice) {
 					let scanDevice = []
 					if (!option.reloadScan) {
 						// 先从已经扫描过的设备获取
 						let deviceResult = await this.getBluetoothDevices(option.deviceId)
-						console.log('【deviceResult】', deviceResult);
+						BluetoothUtil.logInfo('【deviceResult】', deviceResult);
 						if (!deviceResult) {
 							scanDevice = await this.blueScan(option.deviceId) // 扫描设备
 						} else {
@@ -798,11 +919,11 @@ export default class BluetoothUtil {
 				}
 				if (!handleDevice) {
 					return reject({
-						type: 'device_error',
-						msg: '搜索不到设备'
+						errCode: '-96',
+						errMsg: this.errorMsg['-96']
 					})
 				}
-				console.log('【handleDevice】', handleDevice);
+				BluetoothUtil.logInfo('【handleDevice】', handleDevice);
 				if (!isConnect) {
 					await this.createConnect({
 						deviceId: handleDevice.device.deviceId
@@ -814,13 +935,15 @@ export default class BluetoothUtil {
 					const services = await this.getBLEDeviceServices({
 						deviceId: handleDevice.device.deviceId,
 						getCharacteristics: true,
-						matchFn: option.services
+						matchFn: option.matchServices
 					})
 					const matchRes = this.matchServicesCharacteristics({
-						matchType: 'write',
+						matchType: option.matchWriteUUID ? 'uuid' : 'write',
 						services: services,
+						uuid: option.matchWriteUUID || ''
 					})
 					const newDevice = {
+						...option,
 						deviceId: option.deviceId,
 						device: {
 							...handleDevice.device
@@ -834,10 +957,11 @@ export default class BluetoothUtil {
 				// 监听消息
 				if (option.onNotify) {
 					const matchNotify = this.matchServicesCharacteristics({
-						matchType: 'notify',
+						matchType: option.matchNotifyUUID ? 'uuid' : 'notify',
 						services: this.connectedDevice[option.deviceId].services,
+						uuid: option.matchNotifyUUID
 					})
-					console.log('【matchNotify】', matchNotify);
+					BluetoothUtil.logInfo('【matchNotify】', matchNotify);
 					this.connectedDevice[option.deviceId].onNotify = option.onNotify
 					try {
 						this.notifyBLECharacteristicValueChange({
@@ -847,7 +971,7 @@ export default class BluetoothUtil {
 							state: true
 						})
 					} catch (err) {
-						console.log('【消息监听失败】', err);
+						BluetoothUtil.logInfo('【消息监听失败】', err);
 					}
 				}
 				if (option.onClose) {
@@ -855,6 +979,9 @@ export default class BluetoothUtil {
 				}
 				resolve()
 			} catch (err) {
+				if (handleDevice.device.deviceId) {
+					this.closeBLEConnection(handleDevice.device.deviceId)
+				}
 				reject(err)
 			}
 		})
