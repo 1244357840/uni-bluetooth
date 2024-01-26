@@ -34,8 +34,40 @@ const ble = UniBluetooth.BLE({
 ble.writeValue(value, 'hex') // 'hex'表示value的值是16进制的，另外还有'string' 和 'buffer' 两种类型
 
 ```
+## ------- 2024-01-26 更新匹配服务ID、特征UUID、Loading -------
+### 指定服务ID、特征UUID
+```
+//匹配特定服务UUID、特征UUID
+// 类型可以是String ｜ RegExp ｜ Function
+// 单个设备指定
+const ble = BlueUtils.BLE({
+	deviceId: this.deviceId,
+	reloadScan: true,
+	matchServices: this.sereviceID, // 服务UUID
+	matchWriteUUID: this.characteristicsID,  // 特征UUID
+})
 
-# ------- 2024-01-23 更新分片写入 -------
+// 全局默认服务UUID和特征UUID
+BlueUtils.servicesConfig = {
+	services: '服务uuid',
+	characteristics: '特征uuid',
+}
+
+```
+### 开启Loading
+```
+BlueUtils.loadingConfig = {
+	show: false,
+	title: '连接蓝牙设备中...',
+	mask: true
+}
+```
+### 开启console.log输出蓝牙步骤
+```
+BlueUtils.useLog = true
+```
+
+## ------- 2024-01-23 更新分片写入 -------
 ### 蓝牙数据超过20字节的写入方法（分片写入）
 #### 官网说明：
 *1、并行调用多次会存在写失败的可能性。
