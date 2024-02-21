@@ -552,7 +552,8 @@ export default class BluetoothUtil {
 	static async getBLEDeviceServices(option) {
 		const that = this
 		let matchUUID = (uuid) => {
-			const matchFn = option.matchFn || that.servicesConfig
+			const matchFn = option.matchFn || that.servicesConfig.services
+			if (!matchFn) return true
 			return that.matchStr(uuid, matchFn)
 		}
 		return new Promise((resolve, reject) => {
