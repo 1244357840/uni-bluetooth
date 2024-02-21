@@ -667,7 +667,13 @@ export default class BluetoothUtil {
 		}
 		for (let i = 0; i < characteristics.length; i++) {
 			const properties = characteristics[i].properties
-			const uuid = characteristics[i].uuid
+			// #ifdef MP-WEIXIN
+			const uuidKey = 'uuid'
+			// #endif
+			// #ifdef MP-ALIPAY
+			const uuidKey = 'characteristicId'
+			// #endif
+			const uuid = characteristics[i][uuidKey]
 			if (matchFn(uuid)) {
 				matchRes.uuid = uuid
 				return matchRes

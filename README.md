@@ -7,7 +7,7 @@ github: [ uni-bluetooth ](https://github.com/1244357840/uni-bluetooth)
 npm: [ uni-bluetooth ](https://www.npmjs.com/package/uni-bluetooth)
 
 uni插件市场: [y-bluetooth](https://ext.dcloud.net.cn/plugin?id=16447)
-
+# ------- 2024-02-21 兼容支付宝 -------
 # ------- 2024-01-23 更新分片写入方法(请查看下方) -------
 
 ### 基础使用代码：
