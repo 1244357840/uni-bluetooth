@@ -986,7 +986,7 @@ export default class BluetoothUtil {
 				}
 				resolve()
 			} catch (err) {
-				if (handleDevice.device.deviceId) {
+				if (handleDevice?.device?.deviceId) {
 					this.closeBLEConnection(handleDevice.device.deviceId)
 				}
 				reject(err)
