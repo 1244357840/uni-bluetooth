@@ -13,6 +13,8 @@ export default class BluetoothUtil {
 	static connectedDevice = {}; // 已经连接的设备
 
 	static maxScanTime = 10000; // 最长扫描时间
+	
+	static startScanTime = 0; // 开始扫描附近设备时间戳
 
 	static alreadyStateChange = false;
 
@@ -278,9 +280,7 @@ export default class BluetoothUtil {
 	static setScanTimer(fn, scanTime) {
 		if (this.scanTimer) clearTimeout(this.scanTimer)
 		if (scanTime === 0) return
-		const that = this
 		this.scanTimer = setTimeout(() => {
-			that.stopScan()
 			fn()
 		}, scanTime)
 	}
@@ -331,32 +331,55 @@ export default class BluetoothUtil {
 			BluetoothUtil.logInfo("【需要连接的ID】", deviceId);
 			const deviceArr = typeof deviceId == 'string' ? [deviceId] : [...deviceId]
 			const scanDevice = [] // 扫描出来的设备
-			this.setScanTimer(() => {
+			this.startScanTime = +new Date(); // 初始化开始时间
+			const that = this;
+			const parserDevice = {}; // 已经解析过了的deviceId
+			let runClose = true; // 是否已经回调
+			function closeScanTimer() {
+				if (!runClose) return
+				runClose = false;
+				that.stopScan()
 				if (deviceArr.length == 0) {
 					resolve(scanDevice)
 				} else {
 					reject({
 						errCode: '-97',
-						errMsg: this.errorMsg['-97']
+						errMsg: that.errorMsg['-97']
 					})
 				}
+			}
+			this.setScanTimer(() => {
+				closeScanTimer();
 			}, this.maxScanTime)
 			uni.onBluetoothDeviceFound((res) => {
-				BluetoothUtil.logInfo("【扫描到设备】", res, res.devices[0]?.localName);
-				if (res.devices[0]) {
-					for (let i = 0; i < deviceArr.length; i++) {
-						const id = deviceArr[i]
-						if (this.matchDevice(res.devices[0], id)) {
-							scanDevice.push(this.formatDevice(res.devices[0], id))
-							deviceArr.splice(i, 1)
-							break
+				try {
+					if (!runClose) return
+					// 是否解析过， 也可以设置allowDuplicatesKey: false,
+					const id = res.devices[0]?.deviceId
+					if (parserDevice[id]) return;
+					parserDevice[id] = 1;
+
+					BluetoothUtil.logInfo("【扫描到设备】", res, res.devices[0]?.localName);
+					if (res.devices[0]) {
+						for (let i = 0; i < deviceArr.length; i++) {
+							const id = deviceArr[i]
+							if (this.matchDevice(res.devices[0], id)) {
+								scanDevice.push(this.formatDevice(res.devices[0], id))
+								deviceArr.splice(i, 1)
+								break
+							}
 						}
 					}
-				}
-				if (deviceArr.length == 0) {
-					// 扫描完毕
-					uni.stopBluetoothDevicesDiscovery()
-					resolve(scanDevice)
+					if (deviceArr.length == 0) {
+						// 扫描完毕
+						uni.stopBluetoothDevicesDiscovery()
+						resolve(scanDevice)
+					}
+				} catch {}
+				// 防止上面同步任务执行太多，影响宏任务setTimeout执行 （情况较少）
+				const endTime = +new Date();
+				if (endTime - this.startScanTime >= this.maxScanTime) {
+					closeScanTimer()
 				}
 			})
 
